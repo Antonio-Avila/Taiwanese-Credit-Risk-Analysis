@@ -1,6 +1,6 @@
 # Taiwanese Credit Risk Analysis
 
-** Project was cancelled**
+**Project was cancelled**
 
 *Issues with the data:*
 - Any models created with this particular dataset will be prone to data leakage.
