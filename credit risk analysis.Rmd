@@ -1,0 +1,180 @@
+---
+title: "credit risk"
+author: "T"
+date: "1/29/2021"
+output: pdf_document
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(hrbrthemes)
+```
+
+This dataset was provided by the Tamkang University in Taiwan via the UCI Machine Learning Repository. The data and a description of the data can be found by following this [link](http://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients).
+
+
+```{r Load Data}
+
+credit_data <-  read_csv('credit_data.csv', col_names = TRUE)
+credit_data <- credit_data %>% rename('CREDIT_AMT' = 'LIMIT_BAL', 'DEFAULT' = 'default payment next month' )
+
+credit_data$DEFAULT <- credit_data$DEFAULT %>% factor(levels = c(0,1), labels = c('No', 'Yes'))
+credit_data$SEX <- credit_data$SEX %>% factor(levels = c(1,2), labels = c('Male', 'Female'))
+credit_data$EDUCATION <- as.factor(credit_data$EDUCATION)
+credit_data$MARRIAGE <- as.factor(credit_data$MARRIAGE)
+
+glimpse(credit_data)
+
+
+```
+
+
+```{r Credit line Distribution}
+dens_scale = 5e-6 / 7000
+
+credit_data %>% ggplot(aes(x = CREDIT_AMT)) +
+  geom_histogram(color = 'black', fill = rgb(0.2, 0.6, 0.9, 1), alpha = 0.3) +
+  geom_density(aes(y = ..scaled.. * 7000), color = 'red') +
+  scale_y_continuous(
+    name = 'Counts', sec.axis = sec_axis(~.*dens_scale, name = 'Density')
+  ) + 
+    theme_ipsum() +
+  ggtitle('') + 
+  xlab('Amount of Credit') +
+  theme(
+    axis.title.x = element_text(size = 11, hjust = 0.5),
+    axis.title.y = element_text(color = rgb(0.2, 0.6, 0.9, 1), size = 13), 
+    axis.title.y.right = element_text(color = 'red', size = 13)
+  ) 
+  
+```
+
+
+## Who defaulted tho?
+```{r Defaulted}
+# Number of Loans Defaulted
+credit_data %>% ggplot(aes(x = DEFAULT)) + 
+  geom_bar(aes(fill = DEFAULT), show.legend = FALSE) +
+  xlab('Default on Loan') + 
+  ylab('Number of Applicants') + 
+  ggtitle('Loan Defaul Rate') + 
+  geom_text(stat = 'count', aes(label = ..count..), position = position_stack(vjust= 0.5)) 
+
+# By Age
+credit_data %>% ggplot(aes(x = DEFAULT, y = AGE)) + geom_boxplot(aes(fill = DEFAULT), show.legend = FALSE)
+t.test(credit_data$AGE ~ credit_data$DEFAULT)
+
+# By Gender
+credit_data %>% ggplot(aes(x = DEFAULT)) + geom_bar(aes(fill = SEX), position = 'dodge')
+chisq.test(credit_data$DEFAULT, credit_data$SEX)
+
+
+# Defaulted by Gender
+credit_data %>% 
+  filter(DEFAULT == 'Yes') %>% 
+  ggplot(aes(x = DEFAULT)) + 
+    geom_bar(aes(fill = SEX), position = 'dodge')+
+    xlab('Defaulted') + 
+    scale_x_discrete(labels = '') +
+    ylab('Number of Customers') +
+    ggtitle('Number of Customers who Defaulted on Loan') 
+
+def_mf <- credit_data %>% filter(DEFAULT == "Yes") %>% select(SEX) %>% count(SEX)
+prop.test(male_def <- def_mf[1,2][[1]], colSums(def_mf[2]))
+    # Looks lke women tend to default on loans more often. Digging deepeer reveals this isnt true. 
+
+
+
+# By Credit Amount
+credit_data %>% 
+  group_by(DEFAULT) %>% 
+  summarise(avg_cred_amt = mean(CREDIT_AMT)) %>% 
+  ggplot(aes(DEFAULT, avg_cred_amt)) +
+    geom_bar(stat = 'identity', aes(fill = DEFAULT), show.legend = FALSE) +
+    xlab('Defaulted on Loan') + 
+    ylab('Average Amount of Loan') +
+    ggtitle('Average Loan by Default Status') 
+
+credit_data %>% 
+  ggplot(aes(DEFAULT, CREDIT_AMT)) +
+    geom_violin(aes(fill = DEFAULT), show.legend = FALSE) + 
+    xlab('Defaulted on Loan') + 
+    ylab('Amount of Loan') +
+    ggtitle('Loan Distribution by Default Status') 
+    # Defaulted loans were worth less, why? (potentially riskier clients?)
+
+
+
+# By Education
+credit_data %>% ggplot(aes(EDUCATION)) + 
+  geom_bar(aes(fill = EDUCATION), show.legend = FALSE)
+
+credit_data %>% 
+  ggplot(aes(EDUCATION, fill = DEFAULT)) +
+    geom_bar(position = 'dodge')
+
+ed_def <- credit_data %>% 
+  group_by(EDUCATION, DEFAULT) %>% 
+  summarise(count = n()) %>% 
+  mutate(perc = count/sum(count))
+ed_def %>% 
+  ggplot(aes(EDUCATION, perc, fill = DEFAULT)) +
+    geom_bar(stat = "identity", position = 'dodge')
+
+
+
+# By Marriage
+credit_data %>% ggplot(aes(MARRIAGE)) +
+  geom_bar(aes(fill = MARRIAGE), show.legend = FALSE)
+
+credit_data %>% ggplot(aes(MARRIAGE)) +
+  geom_bar(aes(fill = DEFAULT), position = 'dodge')
+
+mar_def <- credit_data %>% 
+  group_by(MARRIAGE, DEFAULT) %>% 
+  summarize(count = n()) %>% 
+  mutate(perc = count/sum(count))
+mar_def %>% ggplot(aes(MARRIAGE)) +
+  geom_bar(aes(y = perc, fill = DEFAULT), stat = 'identity', position = 'dodge')
+
+```
+
+Gives the impression that more females defaulted on their loans, but in reality there are more females overall that received loans. 
+
+
+
+## Break down by Gender
+Inspecting the disparity in defaults between the women and men that were approved for a loan but defaulted.
+
+```{r Gender}
+credit_data %>% ggplot(aes(SEX)) + geom_bar(aes(fill = SEX))
+
+def_by_gender <- credit_data %>% group_by(SEX, DEFAULT) %>% summarize(count = n()) %>% mutate(perc = count/sum(count))
+
+brks = c(0, 0.25, 0.50, 0.75, 1)
+def_by_gender %>% ggplot(aes(x = DEFAULT, y = perc)) +
+  geom_bar(aes(fill = SEX), position = 'dodge', stat = "identity") +
+  xlab('Defaulted on Loan') + 
+  ylab('Percent') +
+  ggtitle('Percent of Customers who Defaulted \n on Loan by Gender') +
+  scale_y_continuous(breaks = brks, labels = scales::percent(brks))
+
+def_by_gender %>% filter(DEFAULT == 'Yes') %>% select(perc)
+
+
+credit_data %>% 
+  filter(DEFAULT == 'Yes') %>% 
+  ggplot(aes(x = DEFAULT)) + 
+    geom_bar(aes(fill = SEX), position = 'fill') +
+    xlab('Defaulted') + 
+    scale_x_discrete(labels = '') +
+    ylab('Number of Customers') +
+    ggtitle('Number of Customers who Defaulted on Loan')
+
+```
+
+
+  
